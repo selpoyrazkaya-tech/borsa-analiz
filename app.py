@@ -75,42 +75,45 @@ if selected_ticker:
         # 3. Yapay Zeka Destekli Gerekçeli Yorum Bölümü
         st.subheader("🤖 Yapay Zeka Hisse Yorumu ve Beklenti Analizi")
         
-        if API_KEY == "BURAYA_GEMINI_API_KEYINIZI_YAZIN" or not API_KEY:
-            st.warning("⚠️ Lütfen app.py dosyasının en üstündeki `API_KEY` kısmına kendi Google Gemini API anahtarınızı yapıştırın.")
-        else:
-            if st.button("🤖 Yapay Zeka Analizini Başlat"):
-                with st.spinner("Yapay zeka teknik verileri ve piyasa durumunu analiz ediyor..."):
-                    try:
-                        # Gemini İstemcisi
-                        client = genai.Client(api_key=API_KEY)
-                        
-                        prompt = f"""
-                        Sen uzman bir Borsa İstanbul (BIST) finansal analistisin. 
-                        Aşağıda verilen teknik verileri ve şirketin genel sektör konumunu dikkate alarak {selected_ticker} hissesi için detaylı bir değerlendirme yap.
+      if not API_KEY or API_KEY == "BURAYA_GEMINI_API_KEYINIZI_YAZIN":
+        st.warning("⚠️ Lütfen Streamlit Cloud 'Secrets' alanına veya kodun üst kısmına geçerli bir API_KEY ekleyin.")
+    else:
+        if st.button("🤖 Yapay Zeka Analizini Başlat"):
+            with st.spinner("Yapay zeka teknik verileri ve piyasa durumunu analiz ediyor..."):
+                try:
+                    # Gemini İstemcisi
+                    client = genai.Client(api_key=str(API_KEY).strip())
 
-                        **Hisse Verileri:**
-                        - Hisse: {selected_ticker}
-                        - Son Kapanış Fiyatı: {last_close} TL
-                        - RSI (14) Değeri: {last_rsi}
-                        - 20 Günlük Hareketli Ortalama (SMA 20): {last_sma20} TL
-                        - 50 Günlük Hareketli Ortalama (SMA 50): {last_sma50} TL
+                    prompt = f"""
+                    Sen uzman bir Borsa İstanbul (BIST) finansal analistisin.
+                    Aşağıda verilen teknik verileri ve şirketin genel sektör konumunu dikkate alarak {selected_ticker} hissesi için detaylı bir değerlendirme yap.
 
-                        **İstenen Format:**
-                        1. **Gelecek Beklentisi:** Hisse için (Yükseliş / Düşüş / Yatay) yönlü bir beklenti belirt.
-                        2. **Somut Gerekçeler:** 
-                           - Verilen teknik verileri yorumla (RSI aşırı alım/satım bölgesinde mi, SMA 20 ile SMA 50 ilişkisi nasıl?).
-                           - Şirketin faaliyet gösterdiği sektörün genel ekonomik durumdan nasıl etkilendiğini açıkla.
-                        3. **Özet Yorum:** Yatırımcının dikkat etmesi gereken kritik noktalar ve riskler.
-                        """
-                        
-                        # Güncel Model Kullanımı
-                        response = client.models.generate_content(
-                            model="gemini-3.6-flash",
-                            contents=prompt,
-                        )
-                        
-                        st.success("Analiz Tamamlandı!")
-                        st.markdown(response.text)
+                    **Hisse Verileri:**
+                    - Hisse: {selected_ticker}
+                    - Son Kapanış Fiyatı: {last_close} TL
+                    - RSI (14) Değeri: {last_rsi}
+                    - 20 Günlük Hareketli Ortalama (SMA 20): {last_sma20} TL
+                    - 50 Günlük Hareketli Ortalama (SMA 50): {last_sma50} TL
+
+                    **İstenen Format:**
+                    1. **Gelecek Beklentisi:** Hisse için (Yükseliş / Düşüş / Yatay) yönlü bir beklenti belirt.
+                    2. **Somut Gerekçeler:**
+                       - Verilen teknik verileri yorumla (RSI aşırı alım/satım bölgesinde mi, SMA 20 ile SMA 50 ilişkisi nasıl?).
+                       - Şirketin faaliyet gösterdiği sektörün genel ekonomik durumdan nasıl etkilendiğini açıkla.
+                    3. **Özet Yorum:** Yatırımcının dikkat etmesi gereken kritik noktalar ve riskler.
+                    """
+
+                    # Güncel Model Kullanımı
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt,
+                    )
+
+                    st.success("Analiz Tamamlandı!")
+                    st.markdown(response.text)
+
+                except Exception as e:
+                    st.error(f"Yapay zeka analizi oluşturulurken bir hata oluştu: {e}")
                         
                     except Exception as e:
                         st.error(f"Yapay zeka analizi oluşturulurken bir hata oluştu: {e}")
