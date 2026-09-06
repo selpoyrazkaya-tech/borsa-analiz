@@ -129,14 +129,25 @@ if selected_ticker:
                     Gelişmiş teknik indikatörler, hacim ve haber akışını harmanlayarak stratejik bir analiz çıkart.
                     """
 
-                    try:
-                        response = client.models.generate_content(
-                            model="gemini-3.6-flash",
-                            contents=prompt,
-                        )
+                    max_retries = 3
+                    response = None
+
+                    for attempt in range(max_retries):
+                        try:
+                            response = client.models.generate_content(
+                                model="gemini-3.6-flash",
+                                contents=prompt,
+                            )
+                            break
+                        except Exception as e:
+                            if ("503" in str(e) or "UNAVAILABLE" in str(e)) and attempt < max_retries - 1:
+                                time.sleep(2)
+                                continue
+                            st.error(f"Analiz sırasında hata oluştu: {e}")
+                            break
+
+                    if response:
                         st.success("Analiz Tamamlandı!")
                         st.markdown(response.text)
-                    except Exception as e:
-                        st.error(f"Analiz sırasında hata oluştu: {e}")
     else:
         st.error("Seçilen zaman aralığı için yeterli veri çekilemedi. Lütfen sol menüden farklı bir 'Zaman Aralığı' seçin.")
