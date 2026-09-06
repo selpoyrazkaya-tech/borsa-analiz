@@ -52,7 +52,6 @@ if selected_ticker:
             pass
     
     if not data.empty and len(data) >= 30:
-        # MultiIndex Temizliği ve Tekil Seri Çevrimi
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
 
@@ -61,11 +60,9 @@ if selected_ticker:
         close_series = data['Close'].squeeze()
         volume_series = data['Volume'].squeeze()
 
-        # İndikatör Hesaplamaları (Sınıf Bazlı İskelet)
         data['EMA_20'] = ta.trend.ema_indicator(close=close_series, window=20)
         data['EMA_50'] = ta.trend.ema_indicator(close=close_series, window=50)
         
-        # ADX Güvenli Hesaplama
         adx_class = ta.trend.ADXIndicator(high=high_series, low=low_series, close=close_series, window=14)
         data['ADX'] = adx_class.adx()
         
@@ -134,7 +131,7 @@ if selected_ticker:
 
                     try:
                         response = client.models.generate_content(
-                            model="gemini-2.5-flash",
+                            model="gemini-3.6-flash",
                             contents=prompt,
                         )
                         st.success("Analiz Tamamlandı!")
