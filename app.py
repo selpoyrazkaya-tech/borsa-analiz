@@ -6,8 +6,8 @@ import plotly.graph_objects as go
 from google import genai
 import time
 
-st.set_page_config(page_title="Yapay Zeka & Çoklu Strateji BIST Analiz", layout="wide")
-st.title("📈 BIST - Trend, Hacim, Haber & Yapay Zeka Analiz Stratejisi")
+st.set_page_config(page_title="Yapay Zeka Destekli BIST Analiz", layout="wide")
+st.title("📈 Borsa İstanbul - Yapay Zeka Yorumlu Analiz Uygulaması")
 
 # Streamlit Secrets'tan API Key Okuma
 try:
@@ -37,70 +37,70 @@ period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "
 if selected_ticker:
     ticker_obj = yf.Ticker(selected_ticker)
     
-    with st.spinner(f"{selected_ticker} verileri ve haberleri indiriliyor..."):
+    with st.spinner(f"{selected_ticker} verileri indiriliyor..."):
         data = ticker_obj.history(period=period, interval="1d")
         
-        # Son Haberleri Çekme
         news_list = []
         try:
             raw_news = ticker_obj.news
             if raw_news:
-                for item in raw_news[:5]:  # Son 5 haber
+                for item in raw_news[:5]:
                     title = item.get("title") or item.get("content", {}).get("title", "")
                     if title:
                         news_list.append(title)
         except Exception:
             pass
     
-    if not data.empty:
+    if not data.empty and len(data) >= 30:
+        # MultiIndex Temizliği ve Tekil Seri Çevrimi
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
 
-        # --- 1. İNDİKATÖR HESAPLAMALARI ---
-        # Trend İndikatörleri
-        data['EMA_20'] = ta.trend.ema_indicator(close=data['Close'], window=20)
-        data['EMA_50'] = ta.trend.ema_indicator(close=data['Close'], window=50)
-        data['ADX'] = ta.trend.adx(high=data['High'], low=data['Low'], close=data['Close'], window=14)
-        
-        # Momentum İndikatörleri
-        data['RSI_14'] = ta.momentum.rsi(close=data['Close'], window=14)
-        
-        # Hacim İndikatörleri
-        data['Vol_SMA20'] = data['Volume'].rolling(window=20).mean()
-        data['OBV'] = ta.volume.on_balance_volume(close=data['Close'], volume=data['Volume'])
+        high_series = data['High'].squeeze()
+        low_series = data['Low'].squeeze()
+        close_series = data['Close'].squeeze()
+        volume_series = data['Volume'].squeeze()
 
-        # --- 2. TEKNİK VERİ METRİKLERİ ---
-        last_close = round(float(data['Close'].iloc[-1]), 2)
+        # İndikatör Hesaplamaları (Sınıf Bazlı İskelet)
+        data['EMA_20'] = ta.trend.ema_indicator(close=close_series, window=20)
+        data['EMA_50'] = ta.trend.ema_indicator(close=close_series, window=50)
+        
+        # ADX Güvenli Hesaplama
+        adx_class = ta.trend.ADXIndicator(high=high_series, low=low_series, close=close_series, window=14)
+        data['ADX'] = adx_class.adx()
+        
+        data['RSI_14'] = ta.momentum.rsi(close=close_series, window=14)
+        data['Vol_SMA20'] = volume_series.rolling(window=20).mean()
+
+        last_close = round(float(close_series.iloc[-1]), 2)
         last_rsi = round(float(data['RSI_14'].iloc[-1]), 2)
         last_ema20 = round(float(data['EMA_20'].iloc[-1]), 2)
         last_ema50 = round(float(data['EMA_50'].iloc[-1]), 2)
         last_adx = round(float(data['ADX'].iloc[-1]), 2)
         
-        last_vol = float(data['Volume'].iloc[-1])
+        last_vol = float(volume_series.iloc[-1])
         avg_vol = float(data['Vol_SMA20'].iloc[-1])
-        vol_change_ratio = round(((last_vol - avg_vol) / avg_vol) * 100, 2)
+        vol_change_ratio = round(((last_vol - avg_vol) / avg_vol) * 100, 2) if avg_vol > 0 else 0
 
-        # --- 3. GRAFİK ÇİZİMİ ---
+        # Grafik
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=data.index, open=data['Open'], high=data['High'],
             low=data['Low'], close=data['Close'], name="Fiyat"
         ))
-        fig.add_trace(go.Scatter(x=data.index, y=data['EMA_20'], line=dict(color='orange', width=1.5), name="EMA 20 (Trend)"))
-        fig.add_trace(go.Scatter(x=data.index, y=data['EMA_50'], line=dict(color='purple', width=1.5), name="EMA 50 (Ana Trend)"))
-        fig.update_layout(title=f"{selected_ticker} Fiyat ve Trend Grafiği", xaxis_rangeslider_visible=False, height=450)
-        st.plotly_chart(fig, width='stretch')
+        fig.add_trace(go.Scatter(x=data.index, y=data['EMA_20'], line=dict(color='orange', width=1.5), name="EMA 20"))
+        fig.add_trace(go.Scatter(x=data.index, y=data['EMA_50'], line=dict(color='purple', width=1.5), name="EMA 50"))
+        fig.update_layout(title=f"{selected_ticker} Fiyat Grafiği", xaxis_rangeslider_visible=False, height=450)
+        st.plotly_chart(fig, use_container_width=True)
 
-        # Metrikler
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Son Fiyat", f"{last_close} TL")
         c2.metric("RSI (14)", last_rsi)
-        c3.metric("ADX (Trend Gücü)", last_adx, delta="Güçlü Trend" if last_adx > 25 else "Zayıf/Yatay")
+        c3.metric("ADX (Trend Gücü)", last_adx)
         c4.metric("EMA 20 / EMA 50", f"{last_ema20} / {last_ema50}")
-        c5.metric("Hacim Değişimi (vs 20G Ortalama)", f"%{vol_change_ratio}", delta_color="normal")
+        c5.metric("Hacim Değişimi", f"%{vol_change_ratio}")
 
-        # Haber Listesi Gösterimi
-        with st.expander("📰 Son Haber Başlıkları (Piyasa Akışı)"):
+        with st.expander("📰 Son Haber Başlıkları"):
             if news_list:
                 for news in news_list:
                     st.write(f"• {news}")
@@ -108,78 +108,38 @@ if selected_ticker:
                 st.write("Güncel haber başlığı bulunamadı.")
 
         st.markdown("---")
-        st.subheader("🤖 Stratejik Yapay Zeka Analiz Raporu")
+        st.subheader("🤖 Yapay Zeka Hisse Analizi")
 
         if not API_KEY:
             st.warning("⚠️ Lütfen Streamlit Cloud 'Secrets' alanına geçerli bir API_KEY ekleyin.")
         else:
             if st.button("🚀 Stratejik Analizi Başlat"):
-                with st.spinner("Trend, Hacim ve Haber verileri harmanlanarak analiz oluşturuluyor..."):
+                with st.spinner("Analiz oluşturuluyor..."):
                     client = genai.Client(api_key=str(API_KEY).strip())
-
-                    news_context = "\n".join([f"- {n}" for n in news_list]) if news_list else "Güncel haber bulunamadı."
+                    news_context = "\n".join([f"- {n}" for n in news_list]) if news_list else "Güncel haber yok."
 
                     prompt = f"""
-                    Sen TradingView indikatörleri, Hacim analizi ve Haber Akışını birleştiren disiplinli bir Borsa İstanbul (BIST) Cant/Quant Analistisin.
+                    Sen uzman bir Borsa İstanbul (BIST) analistisin.
 
-                    **Hisse:** {selected_ticker}
-                    
-                    **1. Trend İndikatörleri:**
-                    - Kapanış Fiyatı: {last_close} TL
-                    - EMA 20: {last_ema20} TL
-                    - EMA 50: {last_ema50} TL
-                    - ADX (Trend Güç İndeksi): {last_adx} (25 üzeri güçlü trend gösterir)
-
-                    **2. Momentum & Hacim Verileri:**
-                    - RSI (14): {last_rsi}
-                    - Son Gün Hacim Değişimi (20 Günlük Ortalamaya Göre): %{vol_change_ratio}
-
-                    **3. Son Haber Başlıkları:**
+                    Hisse: {selected_ticker}
+                    Son Fiyat: {last_close} TL
+                    EMA 20: {last_ema20} | EMA 50: {last_ema50}
+                    ADX (Trend Gücü): {last_adx} | RSI: {last_rsi}
+                    20 Günlük Ortalamaya Göre Hacim Değişimi: %{vol_change_ratio}
+                    Son Haberler:
                     {news_context}
 
-                    ---
-                    **İSTENEN STRATEJİK ANALİZ FORMATI:**
-
-                    🎯 **1. Genel Strateji Sinyali:** (NET BİR EYLEM: Güçlü Al / Kademeli Al / Nötr-İzle / Kar Al / Sat)
-                    
-                    📈 **2. Trend & Hacim Teyidi:**
-                    - EMA 20 ve EMA 50 ilişkisi ne söylüyor?
-                    - ADX değerine göre trend ne kadar güçlü?
-                    - Hacim değişimi fiyat hareketini destekliyor mu (Para girişi var mı)?
-
-                    📰 **3. Haber & Temel Duygu Analizi:**
-                    - Haber başlıkları hisse üzerinde pozitif/negatif bir etki yaratıyor mu?
-
-                    ⚠️ **4. Riskler & Kritik Seviyeler:**
-                    - Stop-loss ve Kar-al için dikkat edilmesi gereken EMA veya teknik destek/direnç noktaları.
+                    Gelişmiş teknik indikatörler, hacim ve haber akışını harmanlayarak stratejik bir analiz çıkart.
                     """
 
-                    max_retries = 3
-                    response = None
-                    
-                    for attempt in range(max_retries):
-                        try:
-                            response = client.models.generate_content(
-                                model="gemini-2.5-flash",
-                                contents=prompt,
-                            )
-                            break
-                        except Exception as e:
-                            if "503" in str(e) or "UNAVAILABLE" in str(e):
-                                if attempt < max_retries - 1:
-                                    time.sleep(2)
-                                    continue
-                            # Yedek olarak 3.6-flash dene
-                            try:
-                                response = client.models.generate_content(
-                                    model="gemini-3.6-flash",
-                                    contents=prompt,
-                                )
-                                break
-                            except Exception:
-                                st.error(f"Yapay zeka analizi oluşturulurken hata oluştu: {e}")
-                                break
-
-                    if response:
-                        st.success("Stratejik Analiz Tamamlandı!")
+                    try:
+                        response = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=prompt,
+                        )
+                        st.success("Analiz Tamamlandı!")
                         st.markdown(response.text)
+                    except Exception as e:
+                        st.error(f"Analiz sırasında hata oluştu: {e}")
+    else:
+        st.error("Seçilen zaman aralığı için yeterli veri çekilemedi. Lütfen sol menüden farklı bir 'Zaman Aralığı' seçin.")
