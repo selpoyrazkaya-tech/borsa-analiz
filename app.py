@@ -4,15 +4,16 @@ import pandas as pd
 import ta
 import plotly.graph_objects as go
 from google import genai
+import time
 
 st.set_page_config(page_title="Yapay Zeka Destekli BIST Analiz", layout="wide")
 st.title("📈 Borsa İstanbul - Yapay Zeka Yorumlu Analiz Uygulaması")
 
-# Streamlit Secrets'tan veya değişkenden API Key Okuma
+# Streamlit Secrets'tan API Key Okuma
 try:
     API_KEY = st.secrets["API_KEY"]
 except Exception:
-    API_KEY = "BURAYA_GEMINI_API_KEYINIZI_YAZIN"
+    API_KEY = None
 
 # Borsa İstanbul Hisse Listesi
 BIST_TUM_HISSELER = sorted([
@@ -69,40 +70,51 @@ if selected_ticker:
         st.markdown("---")
         st.subheader("🤖 Yapay Zeka Hisse Yorumu ve Beklenti Analizi")
 
-        if not API_KEY or API_KEY == "BURAYA_GEMINI_API_KEYINIZI_YAZIN":
+        if not API_KEY:
             st.warning("⚠️ Lütfen Streamlit Cloud 'Secrets' alanına geçerli bir API_KEY ekleyin.")
         else:
             if st.button("🤖 Yapay Zeka Analizini Başlat"):
                 with st.spinner("Yapay zeka teknik verileri ve piyasa durumunu analiz ediyor..."):
-                    try:
-                        client = genai.Client(api_key=str(API_KEY).strip())
+                    client = genai.Client(api_key=str(API_KEY).strip())
 
-                        prompt = f"""
-                        Sen uzman bir Borsa İstanbul (BIST) finansal analistisin.
-                        Aşağıda verilen teknik verileri ve şirketin genel sektör konumunu dikkate alarak {selected_ticker} hissesi için detaylı bir değerlendirme yap.
+                    prompt = f"""
+                    Sen uzman bir Borsa İstanbul (BIST) finansal analistisin.
+                    Aşağıda verilen teknik verileri ve şirketin genel sektör konumunu dikkate alarak {selected_ticker} hissesi için detaylı bir değerlendirme yap.
 
-                        **Hisse Verileri:**
-                        - Hisse: {selected_ticker}
-                        - Son Kapanış Fiyatı: {last_close} TL
-                        - RSI (14) Değeri: {last_rsi}
-                        - 20 Günlük Hareketli Ortalama (SMA 20): {last_sma20} TL
-                        - 50 Günlük Hareketli Ortalama (SMA 50): {last_sma50} TL
+                    **Hisse Verileri:**
+                    - Hisse: {selected_ticker}
+                    - Son Kapanış Fiyatı: {last_close} TL
+                    - RSI (14) Değeri: {last_rsi}
+                    - 20 Günlük Hareketli Ortalama (SMA 20): {last_sma20} TL
+                    - 50 Günlük Hareketli Ortalama (SMA 50): {last_sma50} TL
 
-                        **İstenen Format:**
-                        1. **Gelecek Beklentisi:** Hisse için (Yükseliş / Düşüş / Yatay) yönlü bir beklenti belirt.
-                        2. **Somut Gerekçeler:**
-                           - Verilen teknik verileri yorumla (RSI aşırı alım/satım bölgesinde mi, SMA 20 ile SMA 50 ilişkisi nasıl?).
-                           - Şirketin faaliyet gösterdiği sektörün genel ekonomik durumdan nasıl etkilendiğini açıkla.
-                        3. **Özet Yorum:** Yatırımcının dikkat etmesi gereken kritik noktalar ve riskler.
-                        """
+                    **İstenen Format:**
+                    1. **Gelecek Beklentisi:** Hisse için (Yükseliş / Düşüş / Yatay) yönlü bir beklenti belirt.
+                    2. **Somut Gerekçeler:**
+                       - Verilen teknik verileri yorumla (RSI aşırı alım/satım bölgesinde mi, SMA 20 ile SMA 50 ilişkisi nasıl?).
+                       - Şirketin faaliyet gösterdiği sektörün genel ekonomik durumdan nasıl etkilendiğini açıkla.
+                    3. **Özet Yorum:** Yatırımcının dikkat etmesi gereken kritik noktalar ve riskler.
+                    """
 
-                        response = client.models.generate_content(
-                            model="gemini-3.6-flash",
-                            contents=prompt,
-                        )
+                    # Yoğunluk hatalarına karşı 3 kez tekrar deneme mantığı
+                    max_retries = 3
+                    response = None
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            response = client.models.generate_content(
+                                model="gemini-2.5-flash",
+                                contents=prompt,
+                            )
+                            break
+                        except Exception as e:
+                            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                                if attempt < max_retries - 1:
+                                    time.sleep(2)  # 2 saniye bekle ve tekrar dene
+                                    continue
+                            st.error(f"Yapay zeka analizi oluşturulurken bir hata oluştu: {e}")
+                            break
 
+                    if response:
                         st.success("Analiz Tamamlandı!")
                         st.markdown(response.text)
-
-                    except Exception as e:
-                        st.error(f"Yapay zeka analizi oluşturulurken bir hata oluştu: {e}")
