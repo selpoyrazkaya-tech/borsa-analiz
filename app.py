@@ -4,10 +4,12 @@ import pandas as pd
 import ta
 import plotly.graph_objects as go
 from google import genai
+import feedparser
+import urllib.parse
 import time
 
-st.set_page_config(page_title="Yapay Zeka Destekli BIST Analiz", layout="wide")
-st.title("📈 Borsa İstanbul - Yapay Zeka Yorumlu Analiz Uygulaması")
+st.set_page_config(page_title="Yapay Zeka & Güncel Haber Destekli BIST Analiz", layout="wide")
+st.title("📈 Borsa İstanbul - Güncel Haber & Yapay Zeka Analiz Uygulaması")
 
 # Streamlit Secrets'tan API Key Okuma
 try:
@@ -30,6 +32,22 @@ BIST_TUM_HISSELER = sorted([
     "TUPRS.IS", "ULKER.IS", "VAKBN.IS", "VESBE.IS", "VESTL.IS", "YKBNK.IS", "ZOREN.IS"
 ])
 
+def get_latest_news(ticker_symbol):
+    clean_ticker = ticker_symbol.replace(".IS", "")
+    query = f"{clean_ticker} hisse"
+    encoded_query = urllib.parse.quote(query)
+    rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=tr&gl=TR&ceid=TR:tr"
+    
+    feed = feedparser.parse(rss_url)
+    news_items = []
+    
+    for entry in feed.entries[:5]:
+        news_items.append({
+            "title": entry.title,
+            "link": entry.link
+        })
+    return news_items
+
 st.sidebar.header("📊 Analiz Ayarları")
 selected_ticker = st.sidebar.selectbox("Hisse Seçin:", options=BIST_TUM_HISSELER, index=BIST_TUM_HISSELER.index("THYAO.IS") if "THYAO.IS" in BIST_TUM_HISSELER else 0)
 period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=2)
@@ -37,19 +55,9 @@ period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "
 if selected_ticker:
     ticker_obj = yf.Ticker(selected_ticker)
     
-    with st.spinner(f"{selected_ticker} verileri indiriliyor..."):
+    with st.spinner(f"{selected_ticker} teknik verileri ve güncel haberleri çekiliyor..."):
         data = ticker_obj.history(period=period, interval="1d")
-        
-        news_list = []
-        try:
-            raw_news = ticker_obj.news
-            if raw_news:
-                for item in raw_news[:5]:
-                    title = item.get("title") or item.get("content", {}).get("title", "")
-                    if title:
-                        news_list.append(title)
-        except Exception:
-            pass
+        news_list = get_latest_news(selected_ticker)
     
     if not data.empty and len(data) >= 30:
         if isinstance(data.columns, pd.MultiIndex):
@@ -93,40 +101,47 @@ if selected_ticker:
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Son Fiyat", f"{last_close} TL")
         c2.metric("RSI (14)", last_rsi)
-        c3.metric("ADX (Trend Gücü)", last_adx)
+        c3.metric("ADX (Trend)", last_adx)
         c4.metric("EMA 20 / EMA 50", f"{last_ema20} / {last_ema50}")
         c5.metric("Hacim Değişimi", f"%{vol_change_ratio}")
 
-        with st.expander("📰 Son Haber Başlıkları"):
+        # Güncel Haberler Ekranı
+        with st.expander("📰 Anlık Güncel Haberler (Google News)"):
             if news_list:
-                for news in news_list:
-                    st.write(f"• {news}")
+                for n in news_list:
+                    st.markdown(f"• [{n['title']}]({n['link']})")
             else:
                 st.write("Güncel haber başlığı bulunamadı.")
 
         st.markdown("---")
-        st.subheader("🤖 Yapay Zeka Hisse Analizi")
+        st.subheader("🤖 Haber & Teknik Odaklı Yapay Zeka Analizi")
 
         if not API_KEY:
             st.warning("⚠️ Lütfen Streamlit Cloud 'Secrets' alanına geçerli bir API_KEY ekleyin.")
         else:
             if st.button("🚀 Stratejik Analizi Başlat"):
-                with st.spinner("Analiz oluşturuluyor..."):
+                with st.spinner("Güncel haberler ve teknik indikatörler analiz ediliyor..."):
                     client = genai.Client(api_key=str(API_KEY).strip())
-                    news_context = "\n".join([f"- {n}" for n in news_list]) if news_list else "Güncel haber yok."
+                    news_titles = "\n".join([f"- {n['title']}" for n in news_list]) if news_list else "Güncel haber bulunamadı."
 
                     prompt = f"""
-                    Sen uzman bir Borsa İstanbul (BIST) analistisin.
+                    Sen uzman bir Borsa İstanbul (BIST) finansal analistisin.
 
-                    Hisse: {selected_ticker}
-                    Son Fiyat: {last_close} TL
-                    EMA 20: {last_ema20} | EMA 50: {last_ema50}
-                    ADX (Trend Gücü): {last_adx} | RSI: {last_rsi}
-                    20 Günlük Ortalamaya Göre Hacim Değişimi: %{vol_change_ratio}
-                    Son Haberler:
-                    {news_context}
+                    **Hisse:** {selected_ticker}
+                    **Teknik Göstergeler:**
+                    - Son Fiyat: {last_close} TL
+                    - EMA 20: {last_ema20} TL | EMA 50: {last_ema50} TL
+                    - ADX (Trend Gücü): {last_adx}
+                    - RSI (14): {last_rsi}
+                    - Hacim Değişimi: %{vol_change_ratio}
 
-                    Gelişmiş teknik indikatörler, hacim ve haber akışını harmanlayarak stratejik bir analiz çıkart.
+                    **Son Güncel Haber Başlıkları:**
+                    {news_titles}
+
+                    **GÖREV:**
+                    1. Teknik indikatörleri yorumla (Trend yönü ve gücü).
+                    2. Çekilen haber başlıklarının hisse üzerindeki olası duygu etkisini (Pozitif/Negatif/Nötr) değerlendir.
+                    3. Teknik ve haber verilerini birleştirerek yatırımcı için somut bir strateji/beklenti özeti sun.
                     """
 
                     max_retries = 3
