@@ -16,7 +16,6 @@ if "favorites" not in st.session_state:
     st.session_state.favorites = []
 
 if "portfolio" not in st.session_state:
-    # Yapı: [{"ticker": "ASELS.IS", "amount": 100, "cost": 50.0}]
     st.session_state.portfolio = []
 
 if "selected_ticker" not in st.session_state:
@@ -30,7 +29,7 @@ try:
 except Exception:
     API_KEY = None
 
-# Borsa İstanbul Hisse Listesi
+# Borsa İstanbul Hisse Listesi (ISMEN.IS dahil)
 BIST_TUM_HISSELER = sorted([
     "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", 
     "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKSA.IS", 
@@ -38,7 +37,7 @@ BIST_TUM_HISSELER = sorted([
     "ASTOR.IS", "AYDEM.IS", "BIMAS.IS", "BKRGY.IS", "BRSAN.IS", "CANTE.IS", "CCOLA.IS", "CWENE.IS", 
     "DOAS.IS", "DOHOL.IS", "ECILC.IS", "EGEEN.IS", "EKGYO.IS", "ENJSA.IS", "ENKAI.IS", 
     "EREGL.IS", "EUPWR.IS", "FROTO.IS", "GARAN.IS", "GESAN.IS", "GUBRF.IS", "HALKB.IS", 
-    "HEKTS.IS", "INTET.IS", "ISCTR.IS", "KCAER.IS", "KCHOL.IS", "KONTR.IS", "KOZAL.IS", "KRDMD.IS", 
+    "HEKTS.IS", "INTET.IS", "ISCTR.IS", "ISMEN.IS", "KCAER.IS", "KCHOL.IS", "KONTR.IS", "KOZAL.IS", "KRDMD.IS", 
     "MIATK.IS", "ODAS.IS", "OTKAR.IS", "OYAKC.IS", "PETKM.IS", "PGSUS.IS", "REEDR.IS", 
     "SAHOL.IS", "SASA.IS", "SISE.IS", "SKBNK.IS", "SMRTG.IS", "SOKM.IS", "TAVHL.IS", 
     "TCELL.IS", "THYAO.IS", "TKFEN.IS", "TOASO.IS", "TSKB.IS", "TTKOM.IS", "TTRAK.IS", 
@@ -112,7 +111,6 @@ with st.sidebar.expander("➕ Portföye Hisse Ekle/Güncelle"):
     pf_cost = st.number_input("Maliyet (TL):", min_value=0.01, value=10.0, step=0.1, format="%.2f", key="pf_cost_input")
     
     if st.button("Portföye Ekle", key="pf_add_btn"):
-        # Mevcut hisse varsa güncelle, yoksa ekle
         existing = next((item for item in st.session_state.portfolio if item['ticker'] == pf_ticker), None)
         if existing:
             existing['amount'] = pf_amount
@@ -131,7 +129,6 @@ if st.session_state.portfolio:
         amt = item["amount"]
         c_price = item["cost"]
         
-        # Anlık fiyatı yfinance ile hızlıca alalım
         try:
             live_data = yf.Ticker(t_symbol).history(period="1d")
             curr_price = float(live_data['Close'].iloc[-1]) if not live_data.empty else c_price
@@ -146,7 +143,6 @@ if st.session_state.portfolio:
         total_cost += item_total_cost
         total_val += item_total_val
 
-        # Menü içi görünüm
         st.sidebar.markdown(f"**{t_symbol}** ({amt} Adet)")
         st.sidebar.caption(f"Maliyet: {c_price:.2f} TL | Anlık: {curr_price:.2f} TL")
         
@@ -162,7 +158,6 @@ if st.session_state.portfolio:
             st.rerun()
         st.sidebar.markdown("<hr style='margin:5px 0;'>", unsafe_allow_html=True)
 
-    # Özet Kısım
     total_profit_loss = total_val - total_cost
     total_profit_loss_pct = ((total_val - total_cost) / total_cost) * 100 if total_cost > 0 else 0.0
     
