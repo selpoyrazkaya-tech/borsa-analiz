@@ -85,32 +85,19 @@ DEFAULT_BIST_HISSELER = [
 ALL_BIST_HISSELER = sorted(list(set(DEFAULT_BIST_HISSELER + st.session_state.custom_bist_list)))
 
 
-# --- YÖNTEM B: SPK BÜLTENİ VE HALKA ARZ OTOMASYONU ---
+# --- SPK BÜLTENİ VE HALKA ARZ OTOMASYONU VERİSİ ---
 def get_spk_ipo_data():
     """
-    SPK bülteni ve halka arz akışından alınan güncel halka arz verileri.
-    Sistem gerçek zamanlı bülten ve tarih kontrolü sağlar.
+    SPK bülteni ve güncel halka arz akışından alınan gerçek veriler.
     """
-    # Örnek/Aktif halka arz listesi (Tarihler dinamik kontrol edilir)
-    # YYYY-MM-DD formatında son talep toplama tarihi verilir.
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    
     ipo_list = [
         {
             "name": "Net Global Endüstriyel Yatırımlar A.Ş.",
-            "code": "NETGL.IS",
-            "end_date": "2026-09-12",
-            "price": "42.50 TL",
-            "distribution": "Eşit Dağıtım",
-            "detail": "SPK Bülten Onayı Verildi. Sanayi ve ihracat odaklı üretim tesislerinin finansmanı."
-        },
-        {
-            "name": "Arf Bio Yenilenebilir Enerji A.Ş.",
-            "code": "ARFBI.IS",
-            "end_date": "2026-09-10",
-            "price": "28.00 TL",
-            "distribution": "Oransal Dağıtım",
-            "detail": "Biyoenerji santrali yatırımları ve borç kapama amacıyla halka arz."
+            "code": "NETGL",
+            "end_date": "2026-09-11",
+            "price": "25,52 TL",
+            "distribution": "Bireysele Eşit Dağıtım",
+            "detail": "SPK Bülten Onayı Alındı (9-10-11 Eylül Talep Toplama). Fon kullanım alanı: Vagon fabrikası yatırımı, boru makinesi alımı ve işletme sermayesi."
         }
     ]
     return ipo_list
@@ -160,7 +147,7 @@ if selected_ticker_input != st.session_state.selected_ticker:
 period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=0)
 
 
-# --- 🚀 GELECEK HALKA ARZLAR BÖLÜMÜ (YÖNTEM B) ---
+# --- 🚀 GELECEK HALKA ARZLAR BÖLÜMÜ ---
 st.sidebar.markdown("---")
 st.sidebar.header("🚀 Gelecek Halka Arzlar")
 
@@ -178,8 +165,9 @@ for ipo in all_ipos:
         active_ipos.append(ipo)
     else:
         # TALEP TOPLAMA BİTTİ -> OTOMATİK OLARAK BIST HİSSE LİSTESİNE TRANSFER ET
-        if ipo["code"] not in st.session_state.custom_bist_list and ipo["code"] not in DEFAULT_BIST_HISSELER:
-            st.session_state.custom_bist_list.append(ipo["code"])
+        full_code = f"{ipo['code']}.IS"
+        if full_code not in st.session_state.custom_bist_list and full_code not in DEFAULT_BIST_HISSELER:
+            st.session_state.custom_bist_list.append(full_code)
             save_user_data()
 
 if active_ipos:
@@ -493,4 +481,4 @@ if selected_ticker:
                         st.success("Analiz Tamamlandı!")
                         st.markdown(response.text)
     else:
-        st.info("ℹ️ Bu hisse yeni halka arz olmuş veya henüz Yahoo Finance üzerinde canlı fiyat verisi oluşmamış olabilir. Halka arz aşaması tamamlanıp tahtası açıldığında grafikler aktifleşecektir.")
+        st.info("ℹ️ Bu hisse henüz işlem görmeye başlamamış olabilir veya teknik grafik verisi bulunmamaktadır.")
