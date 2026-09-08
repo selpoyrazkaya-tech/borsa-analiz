@@ -11,7 +11,7 @@ import time
 
 st.set_page_config(page_title="Yapay Zeka & Güncel Haber Destekli BIST Analiz", layout="wide")
 
-# Favoriler için Oturum Hafızası (Session State) Başlatma
+# Favoriler ve Seçili Ticker için Oturum Hafızası (Session State)
 if "favorites" not in st.session_state:
     st.session_state.favorites = []
 
@@ -26,12 +26,12 @@ try:
 except Exception:
     API_KEY = None
 
-# Borsa İstanbul Hisse Listesi (BAKGY.IS ve INTET.IS güncellendi)
+# Borsa İstanbul Hisse Listesi (BKRGY.IS doğru koduyla eklendi)
 BIST_TUM_HISSELER = sorted([
     "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", 
     "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKSA.IS", 
     "AKSEN.IS", "ALARK.IS", "ALBRK.IS", "ALFAS.IS", "ARCLK.IS", "ARDYZ.IS", "ASELS.IS", 
-    "ASTOR.IS", "AYDEM.IS", "BAKGY.IS", "BIMAS.IS", "BRSAN.IS", "CANTE.IS", "CCOLA.IS", "CWENE.IS", 
+    "ASTOR.IS", "AYDEM.IS", "BIMAS.IS", "BKRGY.IS", "BRSAN.IS", "CANTE.IS", "CCOLA.IS", "CWENE.IS", 
     "DOAS.IS", "DOHOL.IS", "ECILC.IS", "EGEEN.IS", "EKGYO.IS", "ENJSA.IS", "ENKAI.IS", 
     "EREGL.IS", "EUPWR.IS", "FROTO.IS", "GARAN.IS", "GESAN.IS", "GUBRF.IS", "HALKB.IS", 
     "HEKTS.IS", "INTET.IS", "ISCTR.IS", "KCAER.IS", "KCHOL.IS", "KONTR.IS", "KOZAL.IS", "KRDMD.IS", 
@@ -71,12 +71,11 @@ st.sidebar.header("📊 Analiz Ayarları")
 selected_ticker_input = st.sidebar.selectbox(
     "Hisse Seçin:", 
     options=BIST_TUM_HISSELER, 
-    index=BIST_TUM_HISSELER.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in BIST_TUM_HISSELER else 0
+    key="sb_selected_ticker"
 )
 
-# Kullanıcı listeden başka hisse seçerse state güncellensin
-if selected_ticker_input != st.session_state.selected_ticker:
-    st.session_state.selected_ticker = selected_ticker_input
+# Kutu değişirse hafızayı güncelle
+st.session_state.selected_ticker = st.session_state.sb_selected_ticker
 
 period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=0)
 
@@ -89,6 +88,7 @@ if st.session_state.favorites:
         col1, col2 = st.sidebar.columns([3, 1])
         if col1.button(f"📌 {fav}", key=f"btn_{fav}"):
             st.session_state.selected_ticker = fav
+            st.session_state.sb_selected_ticker = fav
             st.rerun()
         if col2.button("❌", key=f"del_{fav}"):
             st.session_state.favorites.remove(fav)
@@ -118,7 +118,7 @@ if selected_ticker:
     ticker_obj = yf.Ticker(selected_ticker)
     
     with st.spinner(f"{selected_ticker} verileri indiriliyor..."):
-        # Yeni halka arzlarda 1y hata verebileceği için önceden period='max' deneyip filtrelere öyle alıyoruz
+        # Yeni halka arzlarda period='max' kullanarak tüm geçmiş veriyi çekiyoruz
         data = ticker_obj.history(period="max", interval="1d")
         news_list = get_latest_news(selected_ticker)
     
@@ -131,9 +131,9 @@ if selected_ticker:
         close_series = data['Close'].squeeze()
         volume_series = data['Volume'].squeeze()
 
-        # İndikatör Hesaplamaları (Veri bar sayısına göre dinamik hesaplama)
         bar_count = len(data)
         
+        # İndikatör Hesaplamaları
         data['EMA_20'] = ta.trend.ema_indicator(close=close_series, window=min(bar_count, 20)) if bar_count >= 2 else close_series
         data['EMA_50'] = ta.trend.ema_indicator(close=close_series, window=min(bar_count, 50)) if bar_count >= 2 else close_series
         
