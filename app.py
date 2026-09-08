@@ -26,7 +26,7 @@ try:
 except Exception:
     API_KEY = None
 
-# Borsa İstanbul Hisse Listesi (BKRGY.IS doğru koduyla eklendi)
+# Borsa İstanbul Hisse Listesi (BKRGY.IS ve INTET.IS güncel)
 BIST_TUM_HISSELER = sorted([
     "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", 
     "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKSA.IS", 
@@ -67,15 +67,21 @@ def get_latest_news(ticker_symbol):
 # --- SOL MENÜ (SIDEBAR) ---
 st.sidebar.header("📊 Analiz Ayarları")
 
+# Geçerli indeks tespiti
+current_ticker = st.session_state.selected_ticker
+default_index = BIST_TUM_HISSELER.index(current_ticker) if current_ticker in BIST_TUM_HISSELER else 0
+
 # Hisse Seçim Kutusu
 selected_ticker_input = st.sidebar.selectbox(
     "Hisse Seçin:", 
     options=BIST_TUM_HISSELER, 
-    key="sb_selected_ticker"
+    index=default_index
 )
 
-# Kutu değişirse hafızayı güncelle
-st.session_state.selected_ticker = st.session_state.sb_selected_ticker
+# Kullanıcı kutudan elle farklı hisse seçtiyse state güncellensin
+if selected_ticker_input != st.session_state.selected_ticker:
+    st.session_state.selected_ticker = selected_ticker_input
+    st.rerun()
 
 period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=0)
 
@@ -88,7 +94,6 @@ if st.session_state.favorites:
         col1, col2 = st.sidebar.columns([3, 1])
         if col1.button(f"📌 {fav}", key=f"btn_{fav}"):
             st.session_state.selected_ticker = fav
-            st.session_state.sb_selected_ticker = fav
             st.rerun()
         if col2.button("❌", key=f"del_{fav}"):
             st.session_state.favorites.remove(fav)
@@ -118,7 +123,7 @@ if selected_ticker:
     ticker_obj = yf.Ticker(selected_ticker)
     
     with st.spinner(f"{selected_ticker} verileri indiriliyor..."):
-        # Yeni halka arzlarda period='max' kullanarak tüm geçmiş veriyi çekiyoruz
+        # Yeni halka arzlarda tüm veriyi almak için period='max'
         data = ticker_obj.history(period="max", interval="1d")
         news_list = get_latest_news(selected_ticker)
     
