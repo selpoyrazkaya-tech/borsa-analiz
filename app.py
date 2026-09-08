@@ -10,6 +10,14 @@ import xml.etree.ElementTree as ET
 import time
 
 st.set_page_config(page_title="Yapay Zeka & Güncel Haber Destekli BIST Analiz", layout="wide")
+
+# Favoriler için Oturum Hafızası (Session State) Başlatma
+if "favorites" not in st.session_state:
+    st.session_state.favorites = []
+
+if "selected_ticker" not in st.session_state:
+    st.session_state.selected_ticker = "ASELS.IS"
+
 st.title("📈 Borsa İstanbul - Güncel Haber & Yapay Zeka Analiz Uygulaması")
 
 # Streamlit Secrets'tan API Key Okuma
@@ -56,15 +64,60 @@ def get_latest_news(ticker_symbol):
         
     return news_items
 
+# --- SOL MENÜ (SIDEBAR) ---
 st.sidebar.header("📊 Analiz Ayarları")
-selected_ticker = st.sidebar.selectbox("Hisse Seçin:", options=BIST_TUM_HISSELER, index=BIST_TUM_HISSELER.index("ASELS.IS") if "ASELS.IS" in BIST_TUM_HISSELER else 0)
+
+# Hisse Seçim Kutusu
+selected_ticker_input = st.sidebar.selectbox(
+    "Hisse Seçin:", 
+    options=BIST_TUM_HISSELER, 
+    index=BIST_TUM_HISSELER.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in BIST_TUM_HISSELER else 0
+)
+
+# Kullanıcı listeden başka hisse seçerse state güncellensin
+if selected_ticker_input != st.session_state.selected_ticker:
+    st.session_state.selected_ticker = selected_ticker_input
+
 period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=0)
 
+# FAVORİLER BÖLÜMÜ (SOL MENÜ)
+st.sidebar.markdown("---")
+st.sidebar.header("⭐ Favori Hisselerim")
+
+if st.session_state.favorites:
+    for fav in st.session_state.favorites:
+        col1, col2 = st.sidebar.columns([3, 1])
+        if col1.button(f"📌 {fav}", key=f"btn_{fav}"):
+            st.session_state.selected_ticker = fav
+            st.rerun()
+        if col2.button("❌", key=f"del_{fav}"):
+            st.session_state.favorites.remove(fav)
+            st.rerun()
+else:
+    st.sidebar.info("Henüz favori hisse eklemediniz.")
+
+
+# --- ANA EKRAN VE ANALİZ ---
+selected_ticker = st.session_state.selected_ticker
+
 if selected_ticker:
+    # Favorilere Ekle/Çıkar Butonu Header Kısmı
+    col_title, col_fav = st.columns([4, 1])
+    with col_title:
+        st.subheader(f"📌 Seçili Hisse: {selected_ticker}")
+    with col_fav:
+        is_fav = selected_ticker in st.session_state.favorites
+        fav_btn_label = "⭐ Favorilerden Çıkar" if is_fav else "⭐ Favorilere Ekle"
+        if st.button(fav_btn_label, key="fav_toggle"):
+            if is_fav:
+                st.session_state.favorites.remove(selected_ticker)
+            else:
+                st.session_state.favorites.append(selected_ticker)
+            st.rerun()
+
     ticker_obj = yf.Ticker(selected_ticker)
     
     with st.spinner(f"{selected_ticker} verileri indiriliyor..."):
-        # Indikatörlerin (EMA 50 vb.) tam hesaplanabilmesi için arka planda en az 1 yıllık veri çekiyoruz
         data = ticker_obj.history(period="1y", interval="1d")
         news_list = get_latest_news(selected_ticker)
     
@@ -77,7 +130,7 @@ if selected_ticker:
         close_series = data['Close'].squeeze()
         volume_series = data['Volume'].squeeze()
 
-        # İndikatör Hesaplamaları (Tüm Veri Üzerinden)
+        # İndikatör Hesaplamaları
         data['EMA_20'] = ta.trend.ema_indicator(close=close_series, window=20)
         data['EMA_50'] = ta.trend.ema_indicator(close=close_series, window=50)
         
@@ -87,7 +140,7 @@ if selected_ticker:
         data['RSI_14'] = ta.momentum.rsi(close=close_series, window=14)
         data['Vol_SMA20'] = volume_series.rolling(window=20).mean()
 
-        # Kullanıcının seçtiği periyoda göre grafik ve görünümü filtreleme
+        # Filtreleme
         filter_days = {"1mo": 22, "3mo": 65, "6mo": 130, "1y": 252, "2y": 504}
         days_to_show = filter_days.get(period, 22)
         plot_data = data.tail(days_to_show)
@@ -102,7 +155,7 @@ if selected_ticker:
         avg_vol = float(data['Vol_SMA20'].iloc[-1])
         vol_change_ratio = round(((last_vol - avg_vol) / avg_vol) * 100, 2) if avg_vol > 0 else 0
 
-        # Grafik (Filtrelenmiş Zaman Aralığı Gösterilir)
+        # Grafik
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=plot_data.index, open=plot_data['Open'], high=plot_data['High'],
