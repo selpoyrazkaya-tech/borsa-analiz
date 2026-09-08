@@ -4,8 +4,9 @@ import pandas as pd
 import ta
 import plotly.graph_objects as go
 from google import genai
-import feedparser
+import urllib.request
 import urllib.parse
+import xml.etree.ElementTree as ET
 import time
 
 st.set_page_config(page_title="Yapay Zeka & Güncel Haber Destekli BIST Analiz", layout="wide")
@@ -38,28 +39,36 @@ def get_latest_news(ticker_symbol):
     encoded_query = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=tr&gl=TR&ceid=TR:tr"
     
-    feed = feedparser.parse(rss_url)
     news_items = []
-    
-    for entry in feed.entries[:5]:
-        news_items.append({
-            "title": entry.title,
-            "link": entry.link
-        })
+    try:
+        req = urllib.request.Request(rss_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            xml_data = response.read()
+            root = ET.fromstring(xml_data)
+            
+            for item in root.findall('.//item')[:5]:
+                title = item.find('title').text if item.find('title') is not None else ""
+                link = item.find('link').text if item.find('link') is not None else ""
+                if title:
+                    news_items.append({"title": title, "link": link})
+    except Exception:
+        pass
+        
     return news_items
 
 st.sidebar.header("📊 Analiz Ayarları")
-selected_ticker = st.sidebar.selectbox("Hisse Seçin:", options=BIST_TUM_HISSELER, index=BIST_TUM_HISSELER.index("THYAO.IS") if "THYAO.IS" in BIST_TUM_HISSELER else 0)
-period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=2)
+selected_ticker = st.sidebar.selectbox("Hisse Seçin:", options=BIST_TUM_HISSELER, index=BIST_TUM_HISSELER.index("ASELS.IS") if "ASELS.IS" in BIST_TUM_HISSELER else 0)
+period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=0)
 
 if selected_ticker:
     ticker_obj = yf.Ticker(selected_ticker)
     
-    with st.spinner(f"{selected_ticker} teknik verileri ve güncel haberleri çekiliyor..."):
-        data = ticker_obj.history(period=period, interval="1d")
+    with st.spinner(f"{selected_ticker} verileri indiriliyor..."):
+        # Indikatörlerin (EMA 50 vb.) tam hesaplanabilmesi için arka planda en az 1 yıllık veri çekiyoruz
+        data = ticker_obj.history(period="1y", interval="1d")
         news_list = get_latest_news(selected_ticker)
     
-    if not data.empty and len(data) >= 30:
+    if not data.empty and len(data) >= 50:
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
 
@@ -68,6 +77,7 @@ if selected_ticker:
         close_series = data['Close'].squeeze()
         volume_series = data['Volume'].squeeze()
 
+        # İndikatör Hesaplamaları (Tüm Veri Üzerinden)
         data['EMA_20'] = ta.trend.ema_indicator(close=close_series, window=20)
         data['EMA_50'] = ta.trend.ema_indicator(close=close_series, window=50)
         
@@ -76,6 +86,11 @@ if selected_ticker:
         
         data['RSI_14'] = ta.momentum.rsi(close=close_series, window=14)
         data['Vol_SMA20'] = volume_series.rolling(window=20).mean()
+
+        # Kullanıcının seçtiği periyoda göre grafik ve görünümü filtreleme
+        filter_days = {"1mo": 22, "3mo": 65, "6mo": 130, "1y": 252, "2y": 504}
+        days_to_show = filter_days.get(period, 22)
+        plot_data = data.tail(days_to_show)
 
         last_close = round(float(close_series.iloc[-1]), 2)
         last_rsi = round(float(data['RSI_14'].iloc[-1]), 2)
@@ -87,15 +102,15 @@ if selected_ticker:
         avg_vol = float(data['Vol_SMA20'].iloc[-1])
         vol_change_ratio = round(((last_vol - avg_vol) / avg_vol) * 100, 2) if avg_vol > 0 else 0
 
-        # Grafik
+        # Grafik (Filtrelenmiş Zaman Aralığı Gösterilir)
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
-            x=data.index, open=data['Open'], high=data['High'],
-            low=data['Low'], close=data['Close'], name="Fiyat"
+            x=plot_data.index, open=plot_data['Open'], high=plot_data['High'],
+            low=plot_data['Low'], close=plot_data['Close'], name="Fiyat"
         ))
-        fig.add_trace(go.Scatter(x=data.index, y=data['EMA_20'], line=dict(color='orange', width=1.5), name="EMA 20"))
-        fig.add_trace(go.Scatter(x=data.index, y=data['EMA_50'], line=dict(color='purple', width=1.5), name="EMA 50"))
-        fig.update_layout(title=f"{selected_ticker} Fiyat Grafiği", xaxis_rangeslider_visible=False, height=450)
+        fig.add_trace(go.Scatter(x=plot_data.index, y=plot_data['EMA_20'], line=dict(color='orange', width=1.5), name="EMA 20"))
+        fig.add_trace(go.Scatter(x=plot_data.index, y=plot_data['EMA_50'], line=dict(color='purple', width=1.5), name="EMA 50"))
+        fig.update_layout(title=f"{selected_ticker} Fiyat Grafiği ({period})", xaxis_rangeslider_visible=False, height=450)
         st.plotly_chart(fig, use_container_width=True)
 
         c1, c2, c3, c4, c5 = st.columns(5)
@@ -165,4 +180,4 @@ if selected_ticker:
                         st.success("Analiz Tamamlandı!")
                         st.markdown(response.text)
     else:
-        st.error("Seçilen zaman aralığı için yeterli veri çekilemedi. Lütfen sol menüden farklı bir 'Zaman Aralığı' seçin.")
+        st.error("Seçilen hisse için yeterli veri çekilemedi. Lütfen geçerli bir BIST hissesi seçin.")
