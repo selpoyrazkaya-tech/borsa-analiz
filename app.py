@@ -26,12 +26,12 @@ try:
 except Exception:
     API_KEY = None
 
-# Borsa İstanbul Hisse Listesi (INTET.IS ve BKRGY.IS eklendi)
+# Borsa İstanbul Hisse Listesi (BAKGY.IS ve INTET.IS güncellendi)
 BIST_TUM_HISSELER = sorted([
     "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", 
     "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKSA.IS", 
     "AKSEN.IS", "ALARK.IS", "ALBRK.IS", "ALFAS.IS", "ARCLK.IS", "ARDYZ.IS", "ASELS.IS", 
-    "ASTOR.IS", "AYDEM.IS", "BIMAS.IS", "BKRGY.IS", "BRSAN.IS", "CANTE.IS", "CCOLA.IS", "CWENE.IS", 
+    "ASTOR.IS", "AYDEM.IS", "BAKGY.IS", "BIMAS.IS", "BRSAN.IS", "CANTE.IS", "CCOLA.IS", "CWENE.IS", 
     "DOAS.IS", "DOHOL.IS", "ECILC.IS", "EGEEN.IS", "EKGYO.IS", "ENJSA.IS", "ENKAI.IS", 
     "EREGL.IS", "EUPWR.IS", "FROTO.IS", "GARAN.IS", "GESAN.IS", "GUBRF.IS", "HALKB.IS", 
     "HEKTS.IS", "INTET.IS", "ISCTR.IS", "KCAER.IS", "KCHOL.IS", "KONTR.IS", "KOZAL.IS", "KRDMD.IS", 
@@ -118,10 +118,11 @@ if selected_ticker:
     ticker_obj = yf.Ticker(selected_ticker)
     
     with st.spinner(f"{selected_ticker} verileri indiriliyor..."):
-        data = ticker_obj.history(period="1y", interval="1d")
+        # Yeni halka arzlarda 1y hata verebileceği için önceden period='max' deneyip filtrelere öyle alıyoruz
+        data = ticker_obj.history(period="max", interval="1d")
         news_list = get_latest_news(selected_ticker)
     
-    if not data.empty and len(data) >= 5:
+    if not data.empty and len(data) >= 1:
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
 
@@ -130,22 +131,30 @@ if selected_ticker:
         close_series = data['Close'].squeeze()
         volume_series = data['Volume'].squeeze()
 
-        # İndikatör Hesaplamaları (Yeni halka arzlarda veri az olabileceği için kontrol eklenmiştir)
-        data['EMA_20'] = ta.trend.ema_indicator(close=close_series, window=min(len(data), 20))
-        data['EMA_50'] = ta.trend.ema_indicator(close=close_series, window=min(len(data), 50))
+        # İndikatör Hesaplamaları (Veri bar sayısına göre dinamik hesaplama)
+        bar_count = len(data)
+        
+        data['EMA_20'] = ta.trend.ema_indicator(close=close_series, window=min(bar_count, 20)) if bar_count >= 2 else close_series
+        data['EMA_50'] = ta.trend.ema_indicator(close=close_series, window=min(bar_count, 50)) if bar_count >= 2 else close_series
         
         try:
-            adx_class = ta.trend.ADXIndicator(high=high_series, low=low_series, close=close_series, window=min(len(data), 14))
-            data['ADX'] = adx_class.adx()
+            if bar_count >= 14:
+                adx_class = ta.trend.ADXIndicator(high=high_series, low=low_series, close=close_series, window=14)
+                data['ADX'] = adx_class.adx()
+            else:
+                data['ADX'] = 0
         except Exception:
             data['ADX'] = 0
 
         try:
-            data['RSI_14'] = ta.momentum.rsi(close=close_series, window=min(len(data), 14))
+            if bar_count >= 14:
+                data['RSI_14'] = ta.momentum.rsi(close=close_series, window=14)
+            else:
+                data['RSI_14'] = 50
         except Exception:
             data['RSI_14'] = 50
 
-        data['Vol_SMA20'] = volume_series.rolling(window=min(len(data), 20)).mean()
+        data['Vol_SMA20'] = volume_series.rolling(window=min(bar_count, 20)).mean()
 
         # Filtreleme
         filter_days = {"1mo": 22, "3mo": 65, "6mo": 130, "1y": 252, "2y": 504}
@@ -153,13 +162,22 @@ if selected_ticker:
         plot_data = data.tail(days_to_show)
 
         last_close = round(float(close_series.iloc[-1]), 2)
-        last_rsi = round(float(data['RSI_14'].dropna().iloc[-1]), 2) if not data['RSI_14'].dropna().empty else "N/A"
-        last_ema20 = round(float(data['EMA_20'].dropna().iloc[-1]), 2) if not data['EMA_20'].dropna().empty else "N/A"
-        last_ema50 = round(float(data['EMA_50'].dropna().iloc[-1]), 2) if not data['EMA_50'].dropna().empty else "N/A"
-        last_adx = round(float(data['ADX'].dropna().iloc[-1]), 2) if not data['ADX'].dropna().empty else "N/A"
+        
+        rsi_valid = data['RSI_14'].dropna()
+        last_rsi = round(float(rsi_valid.iloc[-1]), 2) if not rsi_valid.empty else "N/A"
+        
+        ema20_valid = data['EMA_20'].dropna()
+        last_ema20 = round(float(ema20_valid.iloc[-1]), 2) if not ema20_valid.empty else "N/A"
+        
+        ema50_valid = data['EMA_50'].dropna()
+        last_ema50 = round(float(ema50_valid.iloc[-1]), 2) if not ema50_valid.empty else "N/A"
+        
+        adx_valid = data['ADX'].dropna()
+        last_adx = round(float(adx_valid.iloc[-1]), 2) if not adx_valid.empty else "N/A"
         
         last_vol = float(volume_series.iloc[-1])
-        avg_vol = float(data['Vol_SMA20'].dropna().iloc[-1]) if not data['Vol_SMA20'].dropna().empty else last_vol
+        vol_valid = data['Vol_SMA20'].dropna()
+        avg_vol = float(vol_valid.iloc[-1]) if not vol_valid.empty else last_vol
         vol_change_ratio = round(((last_vol - avg_vol) / avg_vol) * 100, 2) if avg_vol > 0 else 0
 
         # Grafik
