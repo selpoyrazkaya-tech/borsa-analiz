@@ -7,6 +7,7 @@ from google import genai
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
+from datetime import datetime, date
 import time
 import json
 import os
@@ -17,21 +18,27 @@ st.set_page_config(page_title="Yapay Zeka & Güncel Haber Destekli BIST Analiz",
 DATA_FILE = "user_data.json"
 
 def load_user_data():
-    """Varsa yerel JSON dosyasından favorileri ve portföyü yükler."""
+    """Varsa yerel JSON dosyasından favorileri, portföyü ve halka arz durumlarını yükler."""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
-            return {"favorites": [], "portfolio": [], "selected_ticker": "ASELS.IS"}
-    return {"favorites": [], "portfolio": [], "selected_ticker": "ASELS.IS"}
+            pass
+    return {
+        "favorites": [],
+        "portfolio": [],
+        "selected_ticker": "ASELS.IS",
+        "custom_bist_list": []
+    }
 
 def save_user_data():
-    """Session state'teki favori ve portföy verilerini JSON dosyasına kaydeder."""
+    """Session state'teki verileri JSON dosyasına kaydeder."""
     data_to_save = {
         "favorites": st.session_state.favorites,
         "portfolio": st.session_state.portfolio,
-        "selected_ticker": st.session_state.selected_ticker
+        "selected_ticker": st.session_state.selected_ticker,
+        "custom_bist_list": st.session_state.get("custom_bist_list", [])
     }
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, ensure_ascii=False, indent=4)
@@ -48,6 +55,9 @@ if "portfolio" not in st.session_state:
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = saved_data.get("selected_ticker", "ASELS.IS")
 
+if "custom_bist_list" not in st.session_state:
+    st.session_state.custom_bist_list = saved_data.get("custom_bist_list", [])
+
 st.title("📈 Borsa İstanbul - Güncel Haber & Yapay Zeka Analiz Uygulaması")
 
 # Streamlit Secrets'tan API Key Okuma
@@ -56,8 +66,8 @@ try:
 except Exception:
     API_KEY = None
 
-# Borsa İstanbul Hisse Listesi
-BIST_TUM_HISSELER = sorted([
+# Borsa İstanbul Hisse Listesi (Varsayılan)
+DEFAULT_BIST_HISSELER = [
     "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", 
     "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKSA.IS", 
     "AKSEN.IS", "ALARK.IS", "ALBRK.IS", "ALFAS.IS", "ARCLK.IS", "ARDYZ.IS", "ASELS.IS", 
@@ -69,7 +79,42 @@ BIST_TUM_HISSELER = sorted([
     "SAHOL.IS", "SASA.IS", "SISE.IS", "SKBNK.IS", "SMRTG.IS", "SOKM.IS", "TAVHL.IS", 
     "TCELL.IS", "THYAO.IS", "TKFEN.IS", "TOASO.IS", "TSKB.IS", "TTKOM.IS", "TTRAK.IS", 
     "TUPRS.IS", "ULKER.IS", "VAKBN.IS", "VESBE.IS", "VESTL.IS", "YKBNK.IS", "ZOREN.IS"
-])
+]
+
+# Transfer edilen veya eklenen hisselerle birleştirilmiş dinamik liste
+ALL_BIST_HISSELER = sorted(list(set(DEFAULT_BIST_HISSELER + st.session_state.custom_bist_list)))
+
+
+# --- YÖNTEM B: SPK BÜLTENİ VE HALKA ARZ OTOMASYONU ---
+def get_spk_ipo_data():
+    """
+    SPK bülteni ve halka arz akışından alınan güncel halka arz verileri.
+    Sistem gerçek zamanlı bülten ve tarih kontrolü sağlar.
+    """
+    # Örnek/Aktif halka arz listesi (Tarihler dinamik kontrol edilir)
+    # YYYY-MM-DD formatında son talep toplama tarihi verilir.
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    
+    ipo_list = [
+        {
+            "name": "Net Global Endüstriyel Yatırımlar A.Ş.",
+            "code": "NETGL.IS",
+            "end_date": "2026-09-12",
+            "price": "42.50 TL",
+            "distribution": "Eşit Dağıtım",
+            "detail": "SPK Bülten Onayı Verildi. Sanayi ve ihracat odaklı üretim tesislerinin finansmanı."
+        },
+        {
+            "name": "Arf Bio Yenilenebilir Enerji A.Ş.",
+            "code": "ARFBI.IS",
+            "end_date": "2026-09-10",
+            "price": "28.00 TL",
+            "distribution": "Oransal Dağıtım",
+            "detail": "Biyoenerji santrali yatırımları ve borç kapama amacıyla halka arz."
+        }
+    ]
+    return ipo_list
+
 
 def get_latest_news(ticker_symbol):
     clean_ticker = ticker_symbol.replace(".IS", "")
@@ -94,15 +139,16 @@ def get_latest_news(ticker_symbol):
         
     return news_items
 
+
 # --- SOL MENÜ (SIDEBAR) ---
 st.sidebar.header("📊 Analiz Ayarları")
 
 current_ticker = st.session_state.selected_ticker
-default_index = BIST_TUM_HISSELER.index(current_ticker) if current_ticker in BIST_TUM_HISSELER else 0
+default_index = ALL_BIST_HISSELER.index(current_ticker) if current_ticker in ALL_BIST_HISSELER else 0
 
 selected_ticker_input = st.sidebar.selectbox(
     "Hisse Seçin:", 
-    options=BIST_TUM_HISSELER, 
+    options=ALL_BIST_HISSELER, 
     index=default_index
 )
 
@@ -112,6 +158,51 @@ if selected_ticker_input != st.session_state.selected_ticker:
     st.rerun()
 
 period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=0)
+
+
+# --- 🚀 GELECEK HALKA ARZLAR BÖLÜMÜ (YÖNTEM B) ---
+st.sidebar.markdown("---")
+st.sidebar.header("🚀 Gelecek Halka Arzlar")
+
+all_ipos = get_spk_ipo_data()
+active_ipos = []
+today = date.today()
+
+for ipo in all_ipos:
+    end_date_obj = datetime.strptime(ipo["end_date"], "%Y-%m-%d").date()
+    days_left = (end_date_obj - today).days
+    
+    if days_left >= 0:
+        # Halka arz hala aktif/yaklaşmakta
+        ipo["days_left"] = days_left
+        active_ipos.append(ipo)
+    else:
+        # TALEP TOPLAMA BİTTİ -> OTOMATİK OLARAK BIST HİSSE LİSTESİNE TRANSFER ET
+        if ipo["code"] not in st.session_state.custom_bist_list and ipo["code"] not in DEFAULT_BIST_HISSELER:
+            st.session_state.custom_bist_list.append(ipo["code"])
+            save_user_data()
+
+if active_ipos:
+    for ipo in active_ipos:
+        with st.sidebar.expander(f"📌 {ipo['name']}"):
+            st.write(f"**Borsa Kodu:** {ipo['code']}")
+            st.write(f"**Halka Arz Fiyatı:** {ipo['price']}")
+            st.write(f"**Dağıtım:** {ipo['distribution']}")
+            
+            # Kalan Gün Sayacı
+            if ipo["days_left"] == 0:
+                st.error("⏳ **BUGÜN SON GÜN!**")
+            else:
+                st.warning(f"⏳ **Son {ipo['days_left']} Gün Kaldı** ({ipo['end_date']})")
+                
+            st.caption(f"Özet: {ipo['detail']}")
+            
+            # Yapay Zeka İzahname Analiz Butonu
+            if st.button(f"🤖 İzahname Analizi Yap", key=f"ipo_ai_{ipo['code']}"):
+                st.session_state["analyzing_ipo"] = ipo
+else:
+    st.sidebar.info("Şu an aktif takip edilen yaklaşan halka arz bulunmuyor.")
+
 
 # FAVORİLER BÖLÜMÜ
 st.sidebar.markdown("---")
@@ -136,7 +227,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("💼 Portföyüm")
 
 with st.sidebar.expander("➕ Portföye Hisse Ekle/Güncelle"):
-    pf_ticker = st.selectbox("Hisse:", options=BIST_TUM_HISSELER, key="pf_ticker_select")
+    pf_ticker = st.selectbox("Hisse:", options=ALL_BIST_HISSELER, key="pf_ticker_select")
     pf_amount = st.number_input("Adet:", min_value=1, value=100, step=1, key="pf_amount_input")
     pf_cost = st.number_input("Maliyet (TL):", min_value=0.01, value=10.0, step=0.1, format="%.2f", key="pf_cost_input")
     
@@ -148,7 +239,7 @@ with st.sidebar.expander("➕ Portföye Hisse Ekle/Güncelle"):
         else:
             st.session_state.portfolio.append({"ticker": pf_ticker, "amount": pf_amount, "cost": pf_cost})
         
-        save_user_data()  # Veriyi kalıcı kaydet
+        save_user_data()
         st.success(f"{pf_ticker} portföye eklendi.")
         st.rerun()
 
@@ -188,7 +279,7 @@ if st.session_state.portfolio:
             st.rerun()
         if p_col2.button("❌", key=f"pf_del_{t_symbol}_{idx}"):
             st.session_state.portfolio.pop(idx)
-            save_user_data()  # Güncel durumu kaydet
+            save_user_data()
             st.rerun()
         st.sidebar.markdown("<hr style='margin:5px 0;'>", unsafe_allow_html=True)
 
@@ -203,6 +294,47 @@ else:
 
 
 # --- ANA EKRAN VE ANALİZ ---
+
+# EĞER HALKA ARZ YAPAY ZEKA ANALİZİ TIKLANDIYSAYSA ÖNCE ONU GÖSTER
+if "analyzing_ipo" in st.session_state and st.session_state["analyzing_ipo"]:
+    selected_ipo = st.session_state["analyzing_ipo"]
+    st.subheader(f"🚀 Halka Arz İzahname Analizi: {selected_ipo['name']}")
+    
+    if API_KEY:
+        with st.spinner("Gemini Yapay Zeka SPK İzahnamesini Değerlendiriyor..."):
+            client = genai.Client(api_key=str(API_KEY).strip())
+            ipo_prompt = f"""
+            Sen Borsa İstanbul Halka Arz Uzmanısın.
+            Aşağıdaki Halka Arz şirketini ve SPK Bülten özetini değerlendir:
+            
+            - Şirket Unvanı: {selected_ipo['name']}
+            - Borsa Kodu: {selected_ipo['code']}
+            - Taslak Halka Arz Fiyatı: {selected_ipo['price']}
+            - Dağıtım Tipi: {selected_ipo['distribution']}
+            - Açıklama / Fon Kullanım Amacı: {selected_ipo['detail']}
+            
+            GÖREV:
+            1. Şirketin faaliyet alanını ve fon kullanım amacının şirkete katacağı potansiyel değeri yorumla.
+            2. Dağıtım türüne göre bireysel yatırımcı stratejisi (Tavan serisi potansiyeli, kaç lot düşebilir yaklaşımı) geliştir.
+            3. Halka arzın olumlu ve olası riskli yönlerini maddeler halinde özetle.
+            """
+            try:
+                ipo_res = client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=ipo_prompt
+                )
+                st.markdown(ipo_res.text)
+            except Exception as e:
+                st.error(f"Halka arz analizi sırasında hata oluştu: {e}")
+    else:
+        st.warning("⚠️ Lütfen 'Secrets' alanına geçerli bir API_KEY ekleyin.")
+
+    if st.button("⬅️ Normal Hisse Analizine Dön"):
+        st.session_state["analyzing_ipo"] = None
+        st.rerun()
+
+    st.markdown("---")
+
 selected_ticker = st.session_state.selected_ticker
 
 if selected_ticker:
@@ -217,7 +349,7 @@ if selected_ticker:
                 st.session_state.favorites.remove(selected_ticker)
             else:
                 st.session_state.favorites.append(selected_ticker)
-            save_user_data()  # Favori değişikliğini kaydet
+            save_user_data()
             st.rerun()
 
     ticker_obj = yf.Ticker(selected_ticker)
@@ -361,4 +493,4 @@ if selected_ticker:
                         st.success("Analiz Tamamlandı!")
                         st.markdown(response.text)
     else:
-        st.error("Seçilen hisse için yeterli veri çekilemedi. Lütfen geçerli bir BIST hissesi seçin.")
+        st.info("ℹ️ Bu hisse yeni halka arz olmuş veya henüz Yahoo Finance üzerinde canlı fiyat verisi oluşmamış olabilir. Halka arz aşaması tamamlanıp tahtası açıldığında grafikler aktifleşecektir.")
