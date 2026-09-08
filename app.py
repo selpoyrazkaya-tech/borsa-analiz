@@ -26,7 +26,7 @@ try:
 except Exception:
     API_KEY = None
 
-# Borsa İstanbul Hisse Listesi (INTEK.IS ve BKRGY.IS eklendi)
+# Borsa İstanbul Hisse Listesi (INTET.IS ve BKRGY.IS eklendi)
 BIST_TUM_HISSELER = sorted([
     "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", 
     "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKSA.IS", 
@@ -34,7 +34,7 @@ BIST_TUM_HISSELER = sorted([
     "ASTOR.IS", "AYDEM.IS", "BIMAS.IS", "BKRGY.IS", "BRSAN.IS", "CANTE.IS", "CCOLA.IS", "CWENE.IS", 
     "DOAS.IS", "DOHOL.IS", "ECILC.IS", "EGEEN.IS", "EKGYO.IS", "ENJSA.IS", "ENKAI.IS", 
     "EREGL.IS", "EUPWR.IS", "FROTO.IS", "GARAN.IS", "GESAN.IS", "GUBRF.IS", "HALKB.IS", 
-    "HEKTS.IS", "INTEK.IS", "ISCTR.IS", "KCAER.IS", "KCHOL.IS", "KONTR.IS", "KOZAL.IS", "KRDMD.IS", 
+    "HEKTS.IS", "INTET.IS", "ISCTR.IS", "KCAER.IS", "KCHOL.IS", "KONTR.IS", "KOZAL.IS", "KRDMD.IS", 
     "MIATK.IS", "ODAS.IS", "OTKAR.IS", "OYAKC.IS", "PETKM.IS", "PGSUS.IS", "REEDR.IS", 
     "SAHOL.IS", "SASA.IS", "SISE.IS", "SKBNK.IS", "SMRTG.IS", "SOKM.IS", "TAVHL.IS", 
     "TCELL.IS", "THYAO.IS", "TKFEN.IS", "TOASO.IS", "TSKB.IS", "TTKOM.IS", "TTRAK.IS", 
