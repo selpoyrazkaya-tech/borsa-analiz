@@ -8,18 +8,45 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 import time
+import json
+import os
 
 st.set_page_config(page_title="Yapay Zeka & Güncel Haber Destekli BIST Analiz", layout="wide")
 
-# Session State Tanımlamaları
+# --- KALICI VERİ SAKLAMA YÖNETİMİ (JSON) ---
+DATA_FILE = "user_data.json"
+
+def load_user_data():
+    """Varsa yerel JSON dosyasından favorileri ve portföyü yükler."""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"favorites": [], "portfolio": [], "selected_ticker": "ASELS.IS"}
+    return {"favorites": [], "portfolio": [], "selected_ticker": "ASELS.IS"}
+
+def save_user_data():
+    """Session state'teki favori ve portföy verilerini JSON dosyasına kaydeder."""
+    data_to_save = {
+        "favorites": st.session_state.favorites,
+        "portfolio": st.session_state.portfolio,
+        "selected_ticker": st.session_state.selected_ticker
+    }
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+
+# Uygulama İlk Açılışında Verileri Yükle
+saved_data = load_user_data()
+
 if "favorites" not in st.session_state:
-    st.session_state.favorites = []
+    st.session_state.favorites = saved_data.get("favorites", [])
 
 if "portfolio" not in st.session_state:
-    st.session_state.portfolio = []
+    st.session_state.portfolio = saved_data.get("portfolio", [])
 
 if "selected_ticker" not in st.session_state:
-    st.session_state.selected_ticker = "ASELS.IS"
+    st.session_state.selected_ticker = saved_data.get("selected_ticker", "ASELS.IS")
 
 st.title("📈 Borsa İstanbul - Güncel Haber & Yapay Zeka Analiz Uygulaması")
 
@@ -29,7 +56,7 @@ try:
 except Exception:
     API_KEY = None
 
-# Borsa İstanbul Hisse Listesi (ISMEN.IS alfabetik sıraya tam eklendi)
+# Borsa İstanbul Hisse Listesi
 BIST_TUM_HISSELER = sorted([
     "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", 
     "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKSA.IS", 
@@ -81,6 +108,7 @@ selected_ticker_input = st.sidebar.selectbox(
 
 if selected_ticker_input != st.session_state.selected_ticker:
     st.session_state.selected_ticker = selected_ticker_input
+    save_user_data()
     st.rerun()
 
 period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=0)
@@ -94,9 +122,11 @@ if st.session_state.favorites:
         col1, col2 = st.sidebar.columns([3, 1])
         if col1.button(f"📌 {fav}", key=f"btn_{fav}"):
             st.session_state.selected_ticker = fav
+            save_user_data()
             st.rerun()
         if col2.button("❌", key=f"del_{fav}"):
             st.session_state.favorites.remove(fav)
+            save_user_data()
             st.rerun()
 else:
     st.sidebar.info("Henüz favori hisse eklemediniz.")
@@ -117,6 +147,8 @@ with st.sidebar.expander("➕ Portföye Hisse Ekle/Güncelle"):
             existing['cost'] = pf_cost
         else:
             st.session_state.portfolio.append({"ticker": pf_ticker, "amount": pf_amount, "cost": pf_cost})
+        
+        save_user_data()  # Veriyi kalıcı kaydet
         st.success(f"{pf_ticker} portföye eklendi.")
         st.rerun()
 
@@ -152,9 +184,11 @@ if st.session_state.portfolio:
         p_col1, p_col2 = st.sidebar.columns([3, 1])
         if p_col1.button(f"📌 Analiz Et", key=f"pf_goto_{t_symbol}_{idx}"):
             st.session_state.selected_ticker = t_symbol
+            save_user_data()
             st.rerun()
         if p_col2.button("❌", key=f"pf_del_{t_symbol}_{idx}"):
             st.session_state.portfolio.pop(idx)
+            save_user_data()  # Güncel durumu kaydet
             st.rerun()
         st.sidebar.markdown("<hr style='margin:5px 0;'>", unsafe_allow_html=True)
 
@@ -183,6 +217,7 @@ if selected_ticker:
                 st.session_state.favorites.remove(selected_ticker)
             else:
                 st.session_state.favorites.append(selected_ticker)
+            save_user_data()  # Favori değişikliğini kaydet
             st.rerun()
 
     ticker_obj = yf.Ticker(selected_ticker)
