@@ -11,9 +11,13 @@ import time
 
 st.set_page_config(page_title="Yapay Zeka & Güncel Haber Destekli BIST Analiz", layout="wide")
 
-# Favoriler ve Seçili Ticker için Oturum Hafızası (Session State)
+# Session State Tanımlamaları
 if "favorites" not in st.session_state:
     st.session_state.favorites = []
+
+if "portfolio" not in st.session_state:
+    # Yapı: [{"ticker": "ASELS.IS", "amount": 100, "cost": 50.0}]
+    st.session_state.portfolio = []
 
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "ASELS.IS"
@@ -26,7 +30,7 @@ try:
 except Exception:
     API_KEY = None
 
-# Borsa İstanbul Hisse Listesi (BKRGY.IS ve INTET.IS güncel)
+# Borsa İstanbul Hisse Listesi
 BIST_TUM_HISSELER = sorted([
     "A1CAP.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS", "AEFES.IS", "AFYON.IS", "AGESA.IS", 
     "AGHOL.IS", "AGROT.IS", "AHGAZ.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKSA.IS", 
@@ -67,25 +71,22 @@ def get_latest_news(ticker_symbol):
 # --- SOL MENÜ (SIDEBAR) ---
 st.sidebar.header("📊 Analiz Ayarları")
 
-# Geçerli indeks tespiti
 current_ticker = st.session_state.selected_ticker
 default_index = BIST_TUM_HISSELER.index(current_ticker) if current_ticker in BIST_TUM_HISSELER else 0
 
-# Hisse Seçim Kutusu
 selected_ticker_input = st.sidebar.selectbox(
     "Hisse Seçin:", 
     options=BIST_TUM_HISSELER, 
     index=default_index
 )
 
-# Kullanıcı kutudan elle farklı hisse seçtiyse state güncellensin
 if selected_ticker_input != st.session_state.selected_ticker:
     st.session_state.selected_ticker = selected_ticker_input
     st.rerun()
 
 period = st.sidebar.selectbox("Zaman Aralığı:", ["1mo", "3mo", "6mo", "1y", "2y"], index=0)
 
-# FAVORİLER BÖLÜMÜ (SOL MENÜ)
+# FAVORİLER BÖLÜMÜ
 st.sidebar.markdown("---")
 st.sidebar.header("⭐ Favori Hisselerim")
 
@@ -101,12 +102,81 @@ if st.session_state.favorites:
 else:
     st.sidebar.info("Henüz favori hisse eklemediniz.")
 
+# PORTFÖYÜM BÖLÜMÜ
+st.sidebar.markdown("---")
+st.sidebar.header("💼 Portföyüm")
+
+with st.sidebar.expander("➕ Portföye Hisse Ekle/Güncelle"):
+    pf_ticker = st.selectbox("Hisse:", options=BIST_TUM_HISSELER, key="pf_ticker_select")
+    pf_amount = st.number_input("Adet:", min_value=1, value=100, step=1, key="pf_amount_input")
+    pf_cost = st.number_input("Maliyet (TL):", min_value=0.01, value=10.0, step=0.1, format="%.2f", key="pf_cost_input")
+    
+    if st.button("Portföye Ekle", key="pf_add_btn"):
+        # Mevcut hisse varsa güncelle, yoksa ekle
+        existing = next((item for item in st.session_state.portfolio if item['ticker'] == pf_ticker), None)
+        if existing:
+            existing['amount'] = pf_amount
+            existing['cost'] = pf_cost
+        else:
+            st.session_state.portfolio.append({"ticker": pf_ticker, "amount": pf_amount, "cost": pf_cost})
+        st.success(f"{pf_ticker} portföye eklendi.")
+        st.rerun()
+
+if st.session_state.portfolio:
+    total_cost = 0.0
+    total_val = 0.0
+
+    for idx, item in enumerate(st.session_state.portfolio):
+        t_symbol = item["ticker"]
+        amt = item["amount"]
+        c_price = item["cost"]
+        
+        # Anlık fiyatı yfinance ile hızlıca alalım
+        try:
+            live_data = yf.Ticker(t_symbol).history(period="1d")
+            curr_price = float(live_data['Close'].iloc[-1]) if not live_data.empty else c_price
+        except Exception:
+            curr_price = c_price
+
+        item_total_cost = amt * c_price
+        item_total_val = amt * curr_price
+        profit_loss = item_total_val - item_total_cost
+        profit_loss_pct = ((curr_price - c_price) / c_price) * 100 if c_price > 0 else 0.0
+
+        total_cost += item_total_cost
+        total_val += item_total_val
+
+        # Menü içi görünüm
+        st.sidebar.markdown(f"**{t_symbol}** ({amt} Adet)")
+        st.sidebar.caption(f"Maliyet: {c_price:.2f} TL | Anlık: {curr_price:.2f} TL")
+        
+        p_color = "🟢" if profit_loss >= 0 else "🔴"
+        st.sidebar.write(f"{p_color} K/Z: {profit_loss:+.2f} TL (%{profit_loss_pct:+.2f})")
+
+        p_col1, p_col2 = st.sidebar.columns([3, 1])
+        if p_col1.button(f"📌 Analiz Et", key=f"pf_goto_{t_symbol}_{idx}"):
+            st.session_state.selected_ticker = t_symbol
+            st.rerun()
+        if p_col2.button("❌", key=f"pf_del_{t_symbol}_{idx}"):
+            st.session_state.portfolio.pop(idx)
+            st.rerun()
+        st.sidebar.markdown("<hr style='margin:5px 0;'>", unsafe_allow_html=True)
+
+    # Özet Kısım
+    total_profit_loss = total_val - total_cost
+    total_profit_loss_pct = ((total_val - total_cost) / total_cost) * 100 if total_cost > 0 else 0.0
+    
+    st.sidebar.markdown("### 📊 Toplam Portföy Özeti")
+    st.sidebar.write(f"**Toplam Değer:** {total_val:,.2f} TL")
+    st.sidebar.write(f"**Toplam Kar/Zarar:** {total_profit_loss:+,.2f} TL (%{total_profit_loss_pct:+.2f})")
+else:
+    st.sidebar.info("Portföyünüzde henüz hisse bulunmuyor.")
+
 
 # --- ANA EKRAN VE ANALİZ ---
 selected_ticker = st.session_state.selected_ticker
 
 if selected_ticker:
-    # Favorilere Ekle/Çıkar Butonu Header Kısmı
     col_title, col_fav = st.columns([4, 1])
     with col_title:
         st.subheader(f"📌 Seçili Hisse: {selected_ticker}")
@@ -123,7 +193,6 @@ if selected_ticker:
     ticker_obj = yf.Ticker(selected_ticker)
     
     with st.spinner(f"{selected_ticker} verileri indiriliyor..."):
-        # Yeni halka arzlarda tüm veriyi almak için period='max'
         data = ticker_obj.history(period="max", interval="1d")
         news_list = get_latest_news(selected_ticker)
     
@@ -138,7 +207,6 @@ if selected_ticker:
 
         bar_count = len(data)
         
-        # İndikatör Hesaplamaları
         data['EMA_20'] = ta.trend.ema_indicator(close=close_series, window=min(bar_count, 20)) if bar_count >= 2 else close_series
         data['EMA_50'] = ta.trend.ema_indicator(close=close_series, window=min(bar_count, 50)) if bar_count >= 2 else close_series
         
@@ -161,7 +229,6 @@ if selected_ticker:
 
         data['Vol_SMA20'] = volume_series.rolling(window=min(bar_count, 20)).mean()
 
-        # Filtreleme
         filter_days = {"1mo": 22, "3mo": 65, "6mo": 130, "1y": 252, "2y": 504}
         days_to_show = filter_days.get(period, 22)
         plot_data = data.tail(days_to_show)
@@ -185,7 +252,6 @@ if selected_ticker:
         avg_vol = float(vol_valid.iloc[-1]) if not vol_valid.empty else last_vol
         vol_change_ratio = round(((last_vol - avg_vol) / avg_vol) * 100, 2) if avg_vol > 0 else 0
 
-        # Grafik
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=plot_data.index, open=plot_data['Open'], high=plot_data['High'],
@@ -206,7 +272,6 @@ if selected_ticker:
         c4.metric("EMA 20 / EMA 50", f"{last_ema20} / {last_ema50}")
         c5.metric("Hacim Değişimi", f"%{vol_change_ratio}")
 
-        # Güncel Haberler Ekranı
         with st.expander("📰 Anlık Güncel Haberler (Google News)"):
             if news_list:
                 for n in news_list:
